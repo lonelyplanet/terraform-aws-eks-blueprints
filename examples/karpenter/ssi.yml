@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    lp-service-id: ssi
+  name: ssi
+  namespace: default
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      lp-service-id: ssi
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 10%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        lp-service-id: ssi
+    spec:
+      containers:
+      - image: nginx:latest
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health-check
+            port: 4000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: ssi
+        ports:
+        - containerPort: 4000
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health-check
+            port: 4000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 600m
+            memory: 900Mi
+          requests:
+            cpu: 200m
+            memory: 300Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: ssi-config-volume
+          subPath: nginx.conf
+        - mountPath: /var/www/index.html
+          name: ssi-config-volume
+          subPath: index.html
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          name: ssi
+        name: ssi-config-volume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    lp-service-id: ssi
+  name: ssi
+  namespace: default
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 4000
+  selector:
+    lp-service-id: ssi
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    lp-service-id: ssi
+  name: ssi
+  namespace: default
+data:
+  index.html: |
+    <html>
+      <body>
+        <!--#include virtual="hello/" --><!--#include virtual="world/" -->
+      </body>
+    </html>
+  nginx.conf: |
+    worker_processes  auto;
+    pid        /etc/nginx/nginx.pid;
+    worker_rlimit_nofile 8192;
+
+    events {}
+    http {
+      log_format combined_json '{ "@timestamp":"$time_iso8601",'
+        '"remote_addr":"$remote_addr",'
+        '"remote_user":"$remote_user",'
+        '"scheme":"$scheme",'
+        '"body_bytes_sent":"$body_bytes_sent",'
+        '"bytes_sent":"$bytes_sent",'
+        '"request_time":"$request_time",'
+        '"status":$status,'
+        '"request":"$request",'
+        '"request_method":"$request_method",'
+        '"request_length":"$request_length",'
+        '"http_referrer":"$http_referer",'
+        '"http_user_agent":"$http_user_agent"'
+      '}';
+      access_log  /dev/stdout combined_json;
+      error_log  /dev/stdout warn;
+
+      default_type application/octet-stream;
+
+      server {
+        listen       4000;
+
+        location /api/health-check {
+          default_type application/json;
+          return 200 '{"status":"success"}';
+        }
+
+        location / {
+          root /var/www
+          ssi on;
+        }
+      }
+    }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  labels:
+    lp-service-id: ssi
+  name: ssi
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ssi.lonelyplanet-digital.sandbox.redventures.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: ssi
+            port:
+              number: 80
+        path: /*
+        pathType: Prefix

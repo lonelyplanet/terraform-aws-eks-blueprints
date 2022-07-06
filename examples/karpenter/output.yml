@@ -1,0 +1,21 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  labels:
+    lp-service-id: dotcom-frontend-2
+  name: dotcom-frontend-2
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ssi.lonelyplanet-digital.sandbox.redventures.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: ssi
+            port:
+              number: 80
+        path: /
+        pathType: Prefix

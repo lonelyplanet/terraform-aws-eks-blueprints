@@ -1,0 +1,100 @@
+apiVersion: v1
+data:
+  nginx.conf: |
+    worker_processes  auto;
+    pid        /etc/nginx/nginx.pid;
+    worker_rlimit_nofile 8192;
+
+    events {}
+    http {
+      log_format combined_json '{ "@timestamp":"$time_iso8601",'
+        '"remote_addr":"$remote_addr",'
+        '"remote_user":"$remote_user",'
+        '"scheme":"$scheme",'
+        '"body_bytes_sent":"$body_bytes_sent",'
+        '"bytes_sent":"$bytes_sent",'
+        '"request_time":"$request_time",'
+        '"status":$status,'
+        '"request":"$request",'
+        '"request_method":"$request_method",'
+        '"request_length":"$request_length",'
+        '"http_referrer":"$http_referer",'
+        '"http_user_agent":"$http_user_agent"'
+      '}';
+      access_log  /dev/stdout combined_json;
+      error_log  /dev/stdout warn;
+
+      default_type application/octet-stream;
+
+      ### BEGIN RATE LIMITING (rules taken from dispatch)
+      limit_req_status 429;
+      limit_req_log_level error;
+
+      # rate limit based on the True-Client-IP request header set by Fastly
+      limit_req_zone $http_true_client_ip zone=global:20m rate=5r/s;
+      limit_req zone=global burst=25;
+
+      # rate limit based on the User-Agent request header because some bots crawl the
+      # site using multiple IP addresses at the same time
+      map $http_user_agent $bot_user_agents {
+        # Search Engines can exceed our capacity when crawling the site if rate
+        # limiting is not in place
+        "~Googlebot" "google";
+        "~Yahoo" "yahoo";
+        "~bingbot" "bing";
+        "~*flipboard" "flipboard";
+        "~*pingback" "pingback";
+
+        # Aggresive bot, uses UA Java/1.7.0_40 and Java/1.7.0_71 and crawls dotcom-pois\
+        # caused general lp.com latency and unavaliability.
+        # https://lonelyplanet.slack.com/archives/ops/p1489477529245186
+        "~Java" "java";
+
+        # default to an empty string to disable rate limiting otherwise
+        default '';
+      }
+      limit_req_zone $bot_user_agents zone=bot_user_agents:1m rate=5r/s;
+      limit_req zone=bot_user_agents burst=10;
+
+      map $http_user_agent $automation_user_agents {
+        "~lp-automation" "lp-automation";
+        # default to an empty string to disable rate limiting otherwise
+        default '';
+      }
+      limit_req_zone $automation_user_agents zone=automation_user_agents:1m rate=50r/s;
+      limit_req zone=automation_user_agents burst=100;
+
+      ### END RATE LIMITING
+
+      server {
+        listen       4000;
+
+        location /cms-notifications/notify {
+          proxy_pass https://www-legacy.lonelyplanet.com/cms-notifications/notify;
+          proxy_set_header  Override-Host www.lonelyplanet.com;
+        }
+
+        location ~* (^/stories.*) {
+          return 301 "https://$host$request_uri/";
+        }
+
+        location / {
+          proxy_pass      http://app:3000;
+        }
+      }
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"nginx.conf":"worker_processes  auto;\npid        /etc/nginx/nginx.pid;\nworker_rlimit_nofile 8192;\n\nevents {}\nhttp {\n  log_format combined_json '{ \"@timestamp\":\"$time_iso8601\",'\n    '\"remote_addr\":\"$remote_addr\",'\n    '\"remote_user\":\"$remote_user\",'\n    '\"scheme\":\"$scheme\",'\n    '\"body_bytes_sent\":\"$body_bytes_sent\",'\n    '\"bytes_sent\":\"$bytes_sent\",'\n    '\"request_time\":\"$request_time\",'\n    '\"status\":$status,'\n    '\"request\":\"$request\",'\n    '\"request_method\":\"$request_method\",'\n    '\"request_length\":\"$request_length\",'\n    '\"http_referrer\":\"$http_referer\",'\n    '\"http_user_agent\":\"$http_user_agent\"'\n  '}';\n  access_log  /dev/stdout combined_json;\n  error_log  /dev/stdout warn;\n\n  default_type application/octet-stream;\n\n  ### BEGIN RATE LIMITING (rules taken from dispatch)\n  limit_req_status 429;\n  limit_req_log_level error;\n\n  # rate limit based on the True-Client-IP request header set by Fastly\n  limit_req_zone $http_true_client_ip zone=global:20m rate=5r/s;\n  limit_req zone=global burst=25;\n\n  # rate limit based on the User-Agent request header because some bots crawl the\n  # site using multiple IP addresses at the same time\n  map $http_user_agent $bot_user_agents {\n    # Search Engines can exceed our capacity when crawling the site if rate\n    # limiting is not in place\n    \"~Googlebot\" \"google\";\n    \"~Yahoo\" \"yahoo\";\n    \"~bingbot\" \"bing\";\n    \"~*flipboard\" \"flipboard\";\n    \"~*pingback\" \"pingback\";\n\n    # Aggresive bot, uses UA Java/1.7.0_40 and Java/1.7.0_71 and crawls dotcom-pois\\\n    # caused general lp.com latency and unavaliability.\n    # https://lonelyplanet.slack.com/archives/ops/p1489477529245186\n    \"~Java\" \"java\";\n\n    # default to an empty string to disable rate limiting otherwise\n    default '';\n  }\n  limit_req_zone $bot_user_agents zone=bot_user_agents:1m rate=5r/s;\n  limit_req zone=bot_user_agents burst=10;\n\n  map $http_user_agent $automation_user_agents {\n    \"~lp-automation\" \"lp-automation\";\n    # default to an empty string to disable rate limiting otherwise\n    default '';\n  }\n  limit_req_zone $automation_user_agents zone=automation_user_agents:1m rate=50r/s;\n  limit_req zone=automation_user_agents burst=100;\n\n  ### END RATE LIMITING\n\n  server {\n    listen       4000;\n\n    location /cms-notifications/notify {\n      proxy_pass https://www-legacy.lonelyplanet.com/cms-notifications/notify;\n      proxy_set_header  Override-Host www.lonelyplanet.com;\n    }\n\n    location ~* (^/stories/sitemap-index.xml$) {\n      add_header X-GH-Cache-Status $upstream_cache_status;\n      add_header X-GH-Cache-Date $upstream_http_date;\n      add_header X-UA-Device $http_UA_Device;\n      add_header X-Forwarded-Proto $http_Forwarded_Proto;\n      proxy_set_header Accept-Encoding \"\";\n      add_header Surrogate-Key stories;\n      add_header X-Lp-Group stories;\n      add_header Host 'www.lonelyplanet.com';\n      proxy_pass https://api.nws.ai;\n    }\n\n    location ~* (^/stories.*/$) {\n      add_header X-GH-Cache-Status $upstream_cache_status;\n      add_header X-GH-Cache-Date $upstream_http_date;\n      add_header X-UA-Device $http_UA_Device;\n      add_header X-Forwarded-Proto $http_Forwarded_Proto;\n      proxy_set_header Accept-Encoding \"\";\n      add_header Surrogate-Key stories;\n      add_header X-Lp-Group stories;\n      add_header Host 'www.lonelyplanet.com';\n      proxy_pass https://api.nws.ai;\n    }\n\n    location ~* (^/stories.*) {\n      return 301 \"https://$host$request_uri/\";\n    }\n\n    location / {\n      proxy_pass      http://app:3000;\n    }\n  }\n}\n"},"kind":"ConfigMap","metadata":{"annotations":{"meta.helm.sh/release-name":"dotcom-frontend-2","meta.helm.sh/release-namespace":"default"},"labels":{"app.kubernetes.io/managed-by":"Helm","lp-service-id":"dotcom-frontend-2"},"name":"dotcom-frontend-2","namespace":"default"}}
+    meta.helm.sh/release-name: dotcom-frontend-2
+    meta.helm.sh/release-namespace: default
+  creationTimestamp: "2021-08-12T19:20:25Z"
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    lp-service-id: dotcom-frontend-2
+  name: dotcom-frontend-2
+  namespace: default
+  resourceVersion: "158283576"
+  uid: 2a58cae4-a637-4c7b-889d-b2aba0e9ba16

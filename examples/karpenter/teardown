@@ -1,0 +1,6 @@
+aws-vault exec rv-lp-sandbox -- terraform destroy -target="module.eks_blueprints_kubernetes_addons.module.ingress_nginx[0]" -auto-approve
+aws-vault exec rv-lp-sandbox -- terraform destroy -target="module.eks_blueprints_kubernetes_addons.module.aws_load_balancer_controller[0]" -auto-approve
+aws-vault exec rv-lp-sandbox -- terraform destroy -target="module.eks_blueprints_kubernetes_addons" -auto-approve
+aws-vault exec rv-lp-sandbox -- terraform destroy -target="module.eks_blueprints" -auto-approve
+aws-vault exec rv-lp-sandbox -- terraform destroy -target="module.aws_vpc" -auto-approve
+aws-vault exec rv-lp-sandbox -- terraform destroy -auto-approve

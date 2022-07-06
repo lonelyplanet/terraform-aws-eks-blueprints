@@ -1,3 +1,57 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
+#
+#
+# │ Error: Kubernetes cluster unreachable: the server has asked for the client to provide credentials                                                                                                                                                           │
+# │   with module.eks_blueprints_kubernetes_addons.module.aws_load_balancer_controller[0].module.helm_addon.helm_release.addon[0],
+# │   on ../../modules/kubernetes-addons/helm-addon/main.tf line 1, in resource "helm_release" "addon":
+# │    1: resource "helm_release" "addon" {
+#
+# It is likely that an IAM role will be needed to allow the cluster to create load balancers
+#
+#
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 provider "aws" {
   region = local.region
 }
@@ -60,6 +114,45 @@ locals {
 }
 
 #---------------------------------------------------------------
+# IAM roles
+#---------------------------------------------------------------
+
+data "aws_iam_policy_document" "eks_assume_role_policy" {
+  statement {
+    actions = [
+      "sts:AssumeRole"
+    ]
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+
+  }
+}
+
+resource "aws_iam_role" "eks_load_balancer_controller_role" {
+  name = "eks_load_balancer_controller_role"
+
+  # Terraform's "jsonencode" function converts a
+  # Terraform expression result to valid JSON syntax.
+  assume_role_policy = data.aws_iam_policy_document.eks_assume_role_policy.json
+}
+
+data "aws_iam_policy_document" "eks_create_load_balancer_policy_document" {
+  source_json = file("${path.module}/load_balancer_iam_policy.json")
+}
+
+resource "aws_iam_policy" "eks_create_load_balancer_policy" {
+  name   = "eks_create_load_balancer_policy"
+  policy = data.aws_iam_policy_document.eks_create_load_balancer_policy_document.json
+}
+resource "aws_iam_role_policy_attachment" "eks_create_load_balancer_controller_attachment" {
+  role = aws_iam_role.eks_load_balancer_controller_role.name
+  policy_arn = aws_iam_policy.eks_create_load_balancer_policy.arn
+}
+
+#---------------------------------------------------------------
 # EKS Blueprints
 #---------------------------------------------------------------
 module "eks_blueprints" {
@@ -116,6 +209,7 @@ module "eks_blueprints" {
     "karpenter.sh/discovery/${local.name}" = local.name
   }
 
+<<<<<<< Updated upstream
   # EKS MANAGED NODE GROUPS
   # We recommend to have a MNG to place your critical workloads and add-ons
   # Then rely on Karpenter to scale your workloads
@@ -136,6 +230,16 @@ module "eks_blueprints" {
       # Launch template configuration
       create_launch_template = true              # false will use the default launch template
       launch_template_os     = "amazonlinux2eks" # amazonlinux2eks or bottlerocket
+=======
+  # Self-managed Node Group
+  # Karpenter requires one node to get up and running
+  self_managed_node_groups = {
+    self_mg_5 = {
+      node_group_name    = local.node_group_name
+      launch_template_os = "bottlerocket"
+      max_size           = 1
+      subnet_ids         = module.vpc.private_subnets
+>>>>>>> Stashed changes
     }
   }
 
@@ -150,8 +254,23 @@ module "eks_blueprints_kubernetes_addons" {
   eks_oidc_provider    = module.eks_blueprints.oidc_provider
   eks_cluster_version  = module.eks_blueprints.eks_cluster_version
 
+<<<<<<< Updated upstream
   enable_karpenter                    = true
   enable_aws_node_termination_handler = true
+=======
+  enable_karpenter = true
+  enable_metrics_server = true
+  enable_aws_load_balancer_controller = true
+  enable_ingress_nginx = true
+
+  aws_load_balancer_controller_helm_config = {
+    values = [templatefile("${path.module}/load_balancer_values.tftpl", { arn = aws_iam_role.eks_load_balancer_controller_role.arn })]
+  }
+  ingress_nginx_helm_config = {
+    version = "4.0.17"
+    values  = [templatefile("${path.module}/nginx_values.tftpl", {})]
+  }
+>>>>>>> Stashed changes
 
   tags = local.tags
 
@@ -166,7 +285,7 @@ module "karpenter_launch_templates" {
 
   launch_template_config = {
     linux = {
-      ami                    = data.aws_ami.eks.id
+      ami                    = data.aws_ami.bottlerocket.id
       launch_template_prefix = "karpenter"
       iam_instance_profile   = module.eks_blueprints.managed_node_group_iam_instance_profile_id[0]
       vpc_security_group_ids = [module.eks_blueprints.worker_node_security_group_id]
@@ -253,16 +372,6 @@ module "vpc" {
   }
 
   tags = local.tags
-}
-
-data "aws_ami" "eks" {
-  owners      = ["amazon"]
-  most_recent = true
-
-  filter {
-    name   = "name"
-    values = ["amazon-eks-node-${module.eks_blueprints.eks_cluster_version}-*"]
-  }
 }
 
 data "aws_ami" "bottlerocket" {
