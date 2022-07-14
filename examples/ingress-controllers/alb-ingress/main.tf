@@ -82,10 +82,12 @@ module "eks_blueprints_kubernetes_addons" {
   enable_amazon_eks_kube_proxy = true
 
   # Add-ons
-  enable_metrics_server               = true
-  enable_cluster_autoscaler           = true
   enable_aws_load_balancer_controller = true
   enable_traefik                      = true
+  enable_external_dns                 = true
+  eks_cluster_domain                  = var.eks_cluster_domain
+  
+
 
 
 

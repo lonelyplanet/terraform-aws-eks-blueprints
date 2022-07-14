@@ -1,22 +1,15 @@
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: "hello-world-1-ingress"
-  namespace: default
+  name: hello-world-1
+  namespace: kube-system
   annotations:
-    alb.ingress.kubernetes.io/load-balancer-name: lonelyplanet-external
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/group.name: lonelyplanet
-    alb.ingress.kubernetes.io/group.order: '500'
-  labels:
-    lp-service-group: hello-world
+    kubernetes.io/ingress.class: traefik
 spec:
   rules:
-  - host: "hello-world-1.lonelyplanet-digital.sandbox.redventures.io"
+  - host: hello-world-1.lonelyplanet-digital.sandbox.redventures.io
     http:
       paths:
-        - path: /*
-          backend:
-            serviceName: hello-world-1
-            servicePort: 3000
+      - backend:
+          serviceName: hello-world-1
+          servicePort: 3000
