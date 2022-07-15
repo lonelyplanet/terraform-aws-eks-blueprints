@@ -85,6 +85,11 @@ module "eks_blueprints_kubernetes_addons" {
   enable_aws_load_balancer_controller = true
   enable_traefik                      = true
   enable_external_dns                 = true
+  external_dns_helm_config            = {
+    version = "6.6.1"
+    values  = [templatefile("${path.module}/external_dns_values.yaml", {})]
+  }
+
   eks_cluster_domain                  = var.eks_cluster_domain
   
 
