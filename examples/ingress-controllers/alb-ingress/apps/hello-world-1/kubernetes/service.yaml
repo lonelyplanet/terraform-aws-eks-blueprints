@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: hello-world-1
+  annotations:
+    external-dns.alpha.kubernetes.io/internal-hostname: hello-world-1.lonelyplanet-digital.sandbox.redventures.io
   labels:
     lp-service-id: hello-world-1
 spec:

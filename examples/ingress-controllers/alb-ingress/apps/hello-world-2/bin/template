@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+import yaml
+import sys
+from kubernetes import client
+
+with open("./kubernetes/template.yml", "r") as f:
+    try:
+        template = yaml.safe_load(f)
+    except yaml.YAMLError as exc:
+        print(exc)
+        sys.exit(1)
+

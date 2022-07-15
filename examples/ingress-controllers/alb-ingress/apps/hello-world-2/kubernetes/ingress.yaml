@@ -1,0 +1,15 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: hello-world-2
+  namespace: kube-system
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+  - host: hello-world-2.lonelyplanet-digital.sandbox.redventures.io
+    http:
+      paths:
+      - backend:
+          serviceName: hello-world-2
+          servicePort: 3000

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world-2
+  labels:
+    lp-service-id: hello-world-2
+spec:
+  selector:
+    matchLabels:
+      lp-service-id: hello-world-2
+  template:
+    metadata:
+      labels:
+        lp-service-id: hello-world-2
+    spec:
+      containers:
+      - name: hello-world-2
+        image: 805470640934.dkr.ecr.us-west-2.amazonaws.com/lonelyplanet/hello-world-2:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
