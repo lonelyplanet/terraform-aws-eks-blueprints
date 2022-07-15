@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-
-LP_SERVICE_ID=$1
-HOST_PORT=$2
-
-kubectl apply -f kubernetes/manifest.yml
-until [[ `kubectl get po -l app=$LP_SERVICE_ID | grep Running` ]] ; do sleep 1; echo -n "." ; done
-kubectl port-forward service/$LP_SERVICE_ID $HOST_PORT:$HOST_PORT 

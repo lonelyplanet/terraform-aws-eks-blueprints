@@ -15,7 +15,11 @@ spec:
     spec:
       containers:
       - name: hello-world-2
-        image: 805470640934.dkr.ecr.us-west-2.amazonaws.com/lonelyplanet/hello-world-2:latest
+        image: nginx:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 3000
+        - containerPort: 4000
+      volumes:
+      - configMap:
+          name: hello-world-2
+        name: hello-world-2-config-volume
