@@ -119,9 +119,21 @@ variable "enable_amazon_eks_kube_proxy" {
 }
 
 variable "enable_amazon_eks_aws_ebs_csi_driver" {
-  description = "Enable EKS Managed AWS EBS CSI Driver add-on"
+  description = "Enable EKS Managed AWS EBS CSI Driver add-on; enable_amazon_eks_aws_ebs_csi_driver and enable_self_managed_aws_ebs_csi_driver are mutually exclusive"
   type        = bool
   default     = false
+}
+
+variable "enable_self_managed_aws_ebs_csi_driver" {
+  description = "Enable self-managed aws-ebs-csi-driver add-on; enable_self_managed_aws_ebs_csi_driver and enable_amazon_eks_aws_ebs_csi_driver are mutually exclusive"
+  type        = bool
+  default     = false
+}
+
+variable "self_managed_aws_ebs_csi_driver_helm_config" {
+  description = "Self-managed aws-ebs-csi-driver Helm chart config"
+  type        = any
+  default     = {}
 }
 
 variable "custom_image_registry_uri" {
@@ -285,6 +297,12 @@ variable "external_dns_private_zone" {
   default     = false
 }
 
+variable "external_dns_route53_zone_arns" {
+  description = "List of Route53 zones ARNs which external-dns will have access to create/manage records"
+  type        = list(string)
+  default     = []
+}
+
 #-----------Amazon Managed Service for Prometheus-------------
 variable "enable_amazon_prometheus" {
   description = "Enable AWS Managed Prometheus service"
@@ -313,6 +331,19 @@ variable "enable_prometheus" {
 
 variable "prometheus_helm_config" {
   description = "Community Prometheus Helm Chart config"
+  type        = any
+  default     = {}
+}
+
+#-----------KUBE-PROMETHEUS-STACK-------------
+variable "enable_kube_prometheus_stack" {
+  description = "Enable Community kube-prometheus-stack add-on"
+  type        = bool
+  default     = false
+}
+
+variable "kube_prometheus_stack_helm_config" {
+  description = "Community kube-prometheus-stack Helm Chart config"
   type        = any
   default     = {}
 }
@@ -436,6 +467,30 @@ variable "aws_efs_csi_driver_helm_config" {
   default     = {}
 }
 
+variable "aws_efs_csi_driver_irsa_policies" {
+  description = "Additional IAM policies for a IAM role for service accounts"
+  type        = list(string)
+  default     = []
+}
+
+#-----------AWS EFS CSI DRIVER ADDON-------------
+variable "enable_aws_fsx_csi_driver" {
+  description = "Enable AWS FSx CSI driver add-on"
+  type        = bool
+  default     = false
+}
+
+variable "aws_fsx_csi_driver_helm_config" {
+  description = "AWS FSx CSI driver Helm Chart config"
+  type        = any
+  default     = {}
+}
+
+variable "aws_fsx_csi_driver_irsa_policies" {
+  description = "Additional IAM policies for a IAM role for service accounts"
+  type        = list(string)
+  default     = []
+}
 #-----------AWS LB Ingress Controller-------------
 variable "enable_aws_load_balancer_controller" {
   description = "Enable AWS Load Balancer Controller add-on"
@@ -638,14 +693,8 @@ variable "argocd_applications" {
   default     = {}
 }
 
-variable "argocd_admin_password_secret_name" {
-  description = "Name for a secret stored in AWS Secrets Manager that contains the admin password"
-  type        = string
-  default     = ""
-}
-
 variable "argocd_manage_add_ons" {
-  description = "Enable managing add-on configuration via ArgoCD"
+  description = "Enable managing add-on configuration via ArgoCD App of Apps"
   type        = bool
   default     = false
 }
@@ -928,13 +977,30 @@ variable "external_secrets_helm_config" {
   description = "External Secrets operator Helm Chart config"
 }
 
+variable "external_secrets_irsa_policies" {
+  description = "Additional IAM policies for a IAM role for service accounts"
+  type        = list(string)
+  default     = []
+}
+
+variable "external_secrets_ssm_parameter_arns" {
+  description = "List of Systems Manager Parameter ARNs that contain secrets to mount using External Secrets"
+  type        = list(string)
+  default     = ["arn:aws:ssm:*:*:parameter/*"]
+}
+
+variable "external_secrets_secrets_manager_arns" {
+  description = "List of Secrets Manager ARNs that contain secrets to mount using External Secrets"
+  type        = list(string)
+  default     = ["arn:aws:secretsmanager:*:*:secret:*"]
+}
+
 #-----------Grafana ADDON-------------
 variable "enable_grafana" {
   description = "Enable Grafana add-on"
   type        = bool
   default     = false
 }
-
 variable "grafana_helm_config" {
   description = "Kubernetes Grafana Helm Chart config"
   type        = any
@@ -947,8 +1013,67 @@ variable "grafana_irsa_policies" {
   default     = []
 }
 
-variable "grafana_admin_password_secret_name" {
-  description = "Grafana Admin password Secrets Manager secret name"
-  type        = string
-  default     = ""
+#-----------KUBERAY OPERATOR-------------
+variable "enable_kuberay_operator" {
+  description = "Enable KubeRay Operator add-on"
+  type        = bool
+  default     = false
+}
+
+variable "kuberay_operator_helm_config" {
+  description = "KubeRay Operator Helm Chart config"
+  type        = any
+  default     = {}
+}
+
+#-----------Apache Airflow ADDON-------------
+variable "enable_airflow" {
+  description = "Enable Airflow add-on"
+  type        = bool
+  default     = false
+}
+
+variable "airflow_helm_config" {
+  description = "Apache Airflow v2 Helm Chart config"
+  type        = any
+  default     = {}
+}
+
+#-----------Promtail ADDON-------------
+variable "enable_promtail" {
+  description = "Enable Promtail add-on"
+  type        = bool
+  default     = false
+}
+
+variable "promtail_helm_config" {
+  description = "Promtail Helm Chart config"
+  type        = any
+  default     = {}
+}
+
+#-----------Calico ADDON-------------
+variable "enable_calico" {
+  description = "Enable Calico add-on"
+  type        = bool
+  default     = false
+}
+
+variable "calico_helm_config" {
+  description = "Calico add-on config"
+  type        = any
+  default     = {}
+}
+
+#-----------Kubecost ADDON-------------
+variable "enable_kubecost" {
+  description = "Enable Kubecost add-on"
+  type        = bool
+  default     = false
+}
+
+variable "kubecost_helm_config" {
+  description = "Kubecost Helm Chart config"
+  type        = any
+  default     = {}
 }

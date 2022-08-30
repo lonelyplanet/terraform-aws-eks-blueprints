@@ -24,6 +24,12 @@ variable "public_subnet_ids" {
   default     = []
 }
 
+variable "control_plane_subnet_ids" {
+  description = "A list of subnet IDs where the EKS cluster control plane (ENIs) will be provisioned. Used for expanding the pool of subnets used by nodes/node groups without replacing the EKS control plane"
+  type        = list(string)
+  default     = []
+}
+
 #-------------------------------
 # EKS module variables (terraform-aws-modules/eks/aws)
 #-------------------------------
@@ -46,9 +52,9 @@ variable "cluster_name" {
 }
 
 variable "cluster_version" {
-  description = "Kubernetes `<major>.<minor>` version to use for the EKS cluster (i.e.: `1.22`)"
+  description = "Kubernetes `<major>.<minor>` version to use for the EKS cluster (i.e.: `1.23`)"
   type        = string
-  default     = "1.22"
+  default     = "1.23"
 }
 
 #-------------------------------

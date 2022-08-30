@@ -46,10 +46,18 @@ module "aws_kube_proxy" {
 }
 
 module "aws_ebs_csi_driver" {
-  count         = var.enable_amazon_eks_aws_ebs_csi_driver ? 1 : 0
-  source        = "./aws-ebs-csi-driver"
-  addon_config  = var.amazon_eks_aws_ebs_csi_driver_config
-  addon_context = local.addon_context
+  source = "./aws-ebs-csi-driver"
+
+  count = var.enable_amazon_eks_aws_ebs_csi_driver || var.enable_self_managed_aws_ebs_csi_driver ? 1 : 0
+
+  # Amazon EKS aws-ebs-csi-driver addon
+  enable_amazon_eks_aws_ebs_csi_driver = var.enable_amazon_eks_aws_ebs_csi_driver
+  addon_config                         = var.amazon_eks_aws_ebs_csi_driver_config
+  addon_context                        = local.addon_context
+
+  # Self-managed aws-ebs-csi-driver addon via Helm chart
+  enable_self_managed_aws_ebs_csi_driver = var.enable_self_managed_aws_ebs_csi_driver
+  helm_config                            = var.self_managed_aws_ebs_csi_driver_helm_config
 }
 
 #-----------------Kubernetes Add-ons----------------------
@@ -63,14 +71,20 @@ module "agones" {
   addon_context                = local.addon_context
 }
 
+module "airflow" {
+  count         = var.enable_airflow ? 1 : 0
+  source        = "./airflow"
+  helm_config   = var.airflow_helm_config
+  addon_context = local.addon_context
+}
+
 module "argocd" {
-  count                      = var.enable_argocd ? 1 : 0
-  source                     = "./argocd"
-  helm_config                = var.argocd_helm_config
-  applications               = var.argocd_applications
-  admin_password_secret_name = var.argocd_admin_password_secret_name
-  addon_config               = { for k, v in local.argocd_addon_config : k => v if v != null }
-  addon_context              = local.addon_context
+  count         = var.enable_argocd ? 1 : 0
+  source        = "./argocd"
+  helm_config   = var.argocd_helm_config
+  applications  = var.argocd_applications
+  addon_config  = { for k, v in local.argocd_addon_config : k => v if v != null }
+  addon_context = local.addon_context
 }
 
 module "argo_rollouts" {
@@ -85,6 +99,16 @@ module "aws_efs_csi_driver" {
   count             = var.enable_aws_efs_csi_driver ? 1 : 0
   source            = "./aws-efs-csi-driver"
   helm_config       = var.aws_efs_csi_driver_helm_config
+  irsa_policies     = var.aws_efs_csi_driver_irsa_policies
+  manage_via_gitops = var.argocd_manage_add_ons
+  addon_context     = local.addon_context
+}
+
+module "aws_fsx_csi_driver" {
+  count             = var.enable_aws_fsx_csi_driver ? 1 : 0
+  source            = "./aws-fsx-csi-driver"
+  helm_config       = var.aws_fsx_csi_driver_helm_config
+  irsa_policies     = var.aws_fsx_csi_driver_irsa_policies
   manage_via_gitops = var.argocd_manage_add_ons
   addon_context     = local.addon_context
 }
@@ -170,14 +194,18 @@ module "crossplane" {
 }
 
 module "external_dns" {
-  count             = var.enable_external_dns ? 1 : 0
-  source            = "./external-dns"
+  source = "./external-dns"
+
+  count = var.enable_external_dns ? 1 : 0
+
   helm_config       = var.external_dns_helm_config
   manage_via_gitops = var.argocd_manage_add_ons
   irsa_policies     = var.external_dns_irsa_policies
   addon_context     = local.addon_context
+
   domain_name       = var.eks_cluster_domain
   private_zone      = var.external_dns_private_zone
+  route53_zone_arns = var.external_dns_route53_zone_arns
 }
 
 module "fargate_fluentbit" {
@@ -188,13 +216,12 @@ module "fargate_fluentbit" {
 }
 
 module "grafana" {
-  count                              = var.enable_grafana ? 1 : 0
-  source                             = "./grafana"
-  helm_config                        = var.grafana_helm_config
-  irsa_policies                      = var.grafana_irsa_policies
-  grafana_admin_password_secret_name = var.grafana_admin_password_secret_name
-  manage_via_gitops                  = var.argocd_manage_add_ons
-  addon_context                      = local.addon_context
+  count             = var.enable_grafana ? 1 : 0
+  source            = "./grafana"
+  helm_config       = var.grafana_helm_config
+  irsa_policies     = var.grafana_irsa_policies
+  manage_via_gitops = var.argocd_manage_add_ons
+  addon_context     = local.addon_context
 }
 
 module "ingress_nginx" {
@@ -255,6 +282,13 @@ module "ondat" {
   etcd_key          = var.ondat_etcd_key
   admin_username    = var.ondat_admin_username
   admin_password    = var.ondat_admin_password
+}
+
+module "kube_prometheus_stack" {
+  count         = var.enable_kube_prometheus_stack ? 1 : 0
+  source        = "./kube-prometheus-stack"
+  helm_config   = var.kube_prometheus_stack_helm_config
+  addon_context = local.addon_context
 }
 
 module "prometheus" {
@@ -456,9 +490,43 @@ module "adot_collector_nginx" {
   ]
 }
 
-module "external_secrets" {
-  count         = var.enable_external_secrets ? 1 : 0
-  source        = "./external-secrets"
-  helm_config   = var.external_secrets_helm_config
+module "kuberay_operator" {
+  count         = var.enable_kuberay_operator ? 1 : 0
+  source        = "./kuberay-operator"
+  helm_config   = var.kuberay_operator_helm_config
   addon_context = local.addon_context
+}
+
+module "external_secrets" {
+  count                                 = var.enable_external_secrets ? 1 : 0
+  source                                = "./external-secrets"
+  helm_config                           = var.external_secrets_helm_config
+  addon_context                         = local.addon_context
+  irsa_policies                         = var.external_secrets_irsa_policies
+  external_secrets_ssm_parameter_arns   = var.external_secrets_ssm_parameter_arns
+  external_secrets_secrets_manager_arns = var.external_secrets_secrets_manager_arns
+}
+
+module "promtail" {
+  count             = var.enable_promtail ? 1 : 0
+  source            = "./promtail"
+  helm_config       = var.promtail_helm_config
+  manage_via_gitops = var.argocd_manage_add_ons
+  addon_context     = local.addon_context
+}
+
+module "calico" {
+  count             = var.enable_calico ? 1 : 0
+  source            = "./calico"
+  helm_config       = var.calico_helm_config
+  manage_via_gitops = var.argocd_manage_add_ons
+  addon_context     = local.addon_context
+}
+
+module "kubecost" {
+  count             = var.enable_kubecost ? 1 : 0
+  source            = "./kubecost"
+  helm_config       = var.kubecost_helm_config
+  manage_via_gitops = var.argocd_manage_add_ons
+  addon_context     = local.addon_context
 }

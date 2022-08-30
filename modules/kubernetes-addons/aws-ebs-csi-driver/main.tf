@@ -1,8 +1,11 @@
 locals {
   create_irsa = try(var.addon_config.service_account_role_arn == "", true)
+  name        = try(var.helm_config.name, "aws-ebs-csi-driver")
+  namespace   = try(var.helm_config.namespace, "kube-system")
 }
 
 resource "aws_eks_addon" "aws_ebs_csi_driver" {
+  count                    = var.enable_amazon_eks_aws_ebs_csi_driver && !var.enable_self_managed_aws_ebs_csi_driver ? 1 : 0
   cluster_name             = var.addon_context.eks_cluster_id
   addon_name               = "aws-ebs-csi-driver"
   addon_version            = try(var.addon_config.addon_version, null)
@@ -19,18 +22,21 @@ resource "aws_eks_addon" "aws_ebs_csi_driver" {
 module "irsa_addon" {
   source = "../../../modules/irsa"
 
-  count = local.create_irsa ? 1 : 0
+  count = local.create_irsa && !var.enable_self_managed_aws_ebs_csi_driver ? 1 : 0
 
   create_kubernetes_namespace       = false
   create_kubernetes_service_account = false
-  kubernetes_namespace              = "kube-system"
+  kubernetes_namespace              = local.namespace
   kubernetes_service_account        = "ebs-csi-controller-sa"
   irsa_iam_policies                 = concat([aws_iam_policy.aws_ebs_csi_driver[0].arn], try(var.addon_config.additional_iam_policies, []))
-  addon_context                     = var.addon_context
+  irsa_iam_role_path                = var.addon_context.irsa_iam_role_path
+  irsa_iam_permissions_boundary     = var.addon_context.irsa_iam_permissions_boundary
+  eks_cluster_id                    = var.addon_context.eks_cluster_id
+  eks_oidc_provider_arn             = var.addon_context.eks_oidc_provider_arn
 }
 
 resource "aws_iam_policy" "aws_ebs_csi_driver" {
-  count = local.create_irsa ? 1 : 0
+  count = local.create_irsa || var.enable_self_managed_aws_ebs_csi_driver ? 1 : 0
 
   name        = "${var.addon_context.eks_cluster_id}-aws-ebs-csi-driver-irsa"
   description = "IAM Policy for AWS EBS CSI Driver"
@@ -43,163 +49,44 @@ resource "aws_iam_policy" "aws_ebs_csi_driver" {
   )
 }
 
-data "aws_iam_policy_document" "aws_ebs_csi_driver" {
-  count = local.create_irsa ? 1 : 0
+module "helm_addon" {
+  source = "../helm-addon"
+  count  = var.enable_self_managed_aws_ebs_csi_driver && !var.enable_amazon_eks_aws_ebs_csi_driver ? 1 : 0
 
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-
-    actions = [
-      "ec2:AttachVolume",
-      "ec2:CreateSnapshot",
-      "ec2:DescribeAvailabilityZones",
-      "ec2:DescribeInstances",
-      "ec2:DescribeSnapshots",
-      "ec2:DescribeTags",
-      "ec2:DescribeVolumes",
-      "ec2:DescribeVolumesModifications",
-      "ec2:DetachVolume",
-      "ec2:ModifyVolume",
+  helm_config = merge({
+    name        = local.name
+    description = "The Amazon Elastic Block Store Container Storage Interface (CSI) Driver provides a CSI interface used by Container Orchestrators to manage the lifecycle of Amazon EBS volumes."
+    chart       = "aws-ebs-csi-driver"
+    version     = "2.10.1"
+    repository  = "https://kubernetes-sigs.github.io/aws-ebs-csi-driver"
+    namespace   = local.namespace
+    values = [
+      <<-EOT
+      image:
+        repository: public.ecr.aws/ebs-csi-driver/aws-ebs-csi-driver
+      controller:
+        k8sTagClusterId: ${var.addon_context.eks_cluster_id}
+      EOT
     ]
-  }
+    },
+    var.helm_config
+  )
 
-  statement {
-    sid    = ""
-    effect = "Allow"
-
-    resources = [
-      "arn:${var.addon_context.aws_partition_id}:ec2:*:*:volume/*",
-      "arn:${var.addon_context.aws_partition_id}:ec2:*:*:snapshot/*",
-    ]
-
-    actions = ["ec2:CreateTags"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "ec2:CreateAction"
-
-      values = [
-        "CreateVolume",
-        "CreateSnapshot",
-      ]
+  set_values = [
+    {
+      name  = "controller.serviceAccount.create"
+      value = "false"
     }
+  ]
+
+  irsa_config = {
+    create_kubernetes_namespace       = try(var.helm_config.create_namespace, false)
+    kubernetes_namespace              = local.namespace
+    create_kubernetes_service_account = true
+    kubernetes_service_account        = "ebs-csi-controller-sa"
+    irsa_iam_policies                 = concat([aws_iam_policy.aws_ebs_csi_driver[0].arn], try(var.helm_config.additional_iam_policies, []))
   }
 
-  statement {
-    sid    = ""
-    effect = "Allow"
-
-    resources = [
-      "arn:${var.addon_context.aws_partition_id}:ec2:*:*:volume/*",
-      "arn:${var.addon_context.aws_partition_id}:ec2:*:*:snapshot/*",
-    ]
-
-    actions = ["ec2:DeleteTags"]
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:CreateVolume"]
-
-    condition {
-      test     = "StringLike"
-      variable = "aws:RequestTag/ebs.csi.aws.com/cluster"
-      values   = ["true"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:CreateVolume"]
-
-    condition {
-      test     = "StringLike"
-      variable = "aws:RequestTag/CSIVolumeName"
-      values   = ["*"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:CreateVolume"]
-
-    condition {
-      test     = "StringLike"
-      variable = "aws:RequestTag/kubernetes.io/cluster/*"
-      values   = ["owned"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:DeleteVolume"]
-
-    condition {
-      test     = "StringLike"
-      variable = "ec2:ResourceTag/ebs.csi.aws.com/cluster"
-      values   = ["true"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:DeleteVolume"]
-
-    condition {
-      test     = "StringLike"
-      variable = "ec2:ResourceTag/CSIVolumeName"
-      values   = ["*"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:DeleteVolume"]
-
-    condition {
-      test     = "StringLike"
-      variable = "ec2:ResourceTag/kubernetes.io/cluster/*"
-      values   = ["owned"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:DeleteSnapshot"]
-
-    condition {
-      test     = "StringLike"
-      variable = "ec2:ResourceTag/CSIVolumeSnapshotName"
-      values   = ["*"]
-    }
-  }
-
-  statement {
-    sid       = ""
-    effect    = "Allow"
-    resources = ["*"]
-    actions   = ["ec2:DeleteSnapshot"]
-
-    condition {
-      test     = "StringLike"
-      variable = "ec2:ResourceTag/ebs.csi.aws.com/cluster"
-      values   = ["true"]
-    }
-  }
+  # Blueprints
+  addon_context = var.addon_context
 }

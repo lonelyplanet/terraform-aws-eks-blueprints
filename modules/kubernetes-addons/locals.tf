@@ -8,6 +8,7 @@ locals {
   argocd_addon_config = {
     agones                    = var.enable_agones ? module.agones[0].argocd_gitops_config : null
     awsEfsCsiDriver           = var.enable_aws_efs_csi_driver ? module.aws_efs_csi_driver[0].argocd_gitops_config : null
+    awsFSxCsiDriver           = var.enable_aws_fsx_csi_driver ? module.aws_fsx_csi_driver[0].argocd_gitops_config : null
     awsForFluentBit           = var.enable_aws_for_fluentbit ? module.aws_for_fluent_bit[0].argocd_gitops_config : null
     awsLoadBalancerController = var.enable_aws_load_balancer_controller ? module.aws_load_balancer_controller[0].argocd_gitops_config : null
     certManager               = var.enable_cert_manager ? module.cert_manager[0].argocd_gitops_config : null
@@ -32,6 +33,9 @@ locals {
     awsCloudWatchMetrics      = var.enable_aws_cloudwatch_metrics ? module.aws_cloudwatch_metrics[0].argocd_gitops_config : null
     externalDns               = var.enable_external_dns ? module.external_dns[0].argocd_gitops_config : null
     velero                    = var.enable_velero ? module.velero[0].argocd_gitops_config : null
+    promtail                  = var.enable_promtail ? module.promtail[0].argocd_gitops_config : null
+    calico                    = var.enable_calico ? module.calico[0].argocd_gitops_config : null
+    kubecost                  = var.enable_kubecost ? module.kubecost[0].argocd_gitops_config : null
   }
 
   addon_context = {

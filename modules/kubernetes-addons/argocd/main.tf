@@ -1,9 +1,8 @@
 module "helm_addon" {
-  source               = "../helm-addon"
-  helm_config          = local.helm_config
-  irsa_config          = null
-  set_sensitive_values = local.set_sensitive
-  addon_context        = var.addon_context
+  source        = "../helm-addon"
+  helm_config   = local.helm_config
+  irsa_config   = null
+  addon_context = var.addon_context
 
   depends_on = [kubernetes_namespace_v1.this]
 }
@@ -30,48 +29,56 @@ resource "helm_release" "argocd_application" {
   set {
     name  = "name"
     value = each.key
+    type  = "string"
   }
 
   set {
     name  = "project"
     value = each.value.project
+    type  = "string"
   }
 
   # Source Config.
   set {
     name  = "source.repoUrl"
     value = each.value.repo_url
+    type  = "string"
   }
 
   set {
     name  = "source.targetRevision"
     value = each.value.target_revision
+    type  = "string"
   }
 
   set {
     name  = "source.path"
     value = each.value.path
+    type  = "string"
   }
 
   set {
     name  = "source.helm.releaseName"
     value = each.key
+    type  = "string"
   }
 
   set {
     name = "source.helm.values"
     value = yamlencode(merge(
-      { repo_url = each.value.repo_url },
+      { repoUrl = each.value.repo_url },
       each.value.values,
       local.global_application_values,
       each.value.add_on_application ? var.addon_config : {}
     ))
+    type = "auto"
   }
 
   # Destination Config.
   set {
     name  = "destination.server"
     value = each.value.destination
+    type  = "string"
   }
 
   depends_on = [module.helm_addon]

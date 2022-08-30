@@ -5,27 +5,19 @@ provider "aws" {
 provider "kubernetes" {
   host                   = module.eks_blueprints.eks_cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks_blueprints.eks_cluster_certificate_authority_data)
-
-  exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
-    command     = "aws"
-    # This requires the awscli to be installed locally where Terraform is executed
-    args = ["eks", "get-token", "--cluster-name", module.eks_blueprints.eks_cluster_id]
-  }
+  token                  = data.aws_eks_cluster_auth.this.token
 }
 
 provider "helm" {
   kubernetes {
     host                   = module.eks_blueprints.eks_cluster_endpoint
     cluster_ca_certificate = base64decode(module.eks_blueprints.eks_cluster_certificate_authority_data)
-
-    exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
-      command     = "aws"
-      # This requires the awscli to be installed locally where Terraform is executed
-      args = ["eks", "get-token", "--cluster-name", module.eks_blueprints.eks_cluster_id]
-    }
+    token                  = data.aws_eks_cluster_auth.this.token
   }
+}
+
+data "aws_eks_cluster_auth" "this" {
+  name = module.eks_blueprints.eks_cluster_id
 }
 
 data "aws_availability_zones" "available" {}
@@ -46,11 +38,12 @@ locals {
 #---------------------------------------------------------------
 # EKS Blueprints
 #---------------------------------------------------------------
+
 module "eks_blueprints" {
   source = "../.."
 
   cluster_name    = local.name
-  cluster_version = "1.22"
+  cluster_version = "1.23"
 
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnets
@@ -60,6 +53,7 @@ module "eks_blueprints" {
       node_group_name    = "velero"
       launch_template_os = "amazonlinux2eks"
       subnet_ids         = module.vpc.private_subnets
+      k8s_taints         = [{ key = "VeleroOnly", value = "true", effect = "NO_SCHEDULE" }]
     }
   }
 
@@ -69,10 +63,24 @@ module "eks_blueprints" {
 module "eks_blueprints_kubernetes_addons" {
   source = "../../modules/kubernetes-addons"
 
-  eks_cluster_id = module.eks_blueprints.eks_cluster_id
+  eks_cluster_id       = module.eks_blueprints.eks_cluster_id
+  eks_cluster_endpoint = module.eks_blueprints.eks_cluster_endpoint
+  eks_oidc_provider    = module.eks_blueprints.oidc_provider
+  eks_cluster_version  = module.eks_blueprints.eks_cluster_version
 
   enable_velero           = true
   velero_backup_s3_bucket = module.velero_backup_s3_bucket.s3_bucket_id
+
+  enable_aws_efs_csi_driver = true
+
+  enable_self_managed_aws_ebs_csi_driver = true
+  self_managed_aws_ebs_csi_driver_helm_config = {
+    set_values = [
+      {
+        name  = "node.tolerateAllTaints"
+        value = "true"
+    }]
+  }
 
   tags = local.tags
 }
@@ -80,6 +88,7 @@ module "eks_blueprints_kubernetes_addons" {
 #---------------------------------------------------------------
 # Supporting Resources
 #---------------------------------------------------------------
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 3.0"
@@ -160,4 +169,51 @@ module "velero_backup_s3_bucket" {
   }
 
   tags = local.tags
+}
+
+resource "aws_efs_file_system" "efs" {
+  creation_token = "efs"
+  encrypted      = true
+
+  tags = local.tags
+}
+
+resource "aws_efs_mount_target" "efs_mt" {
+  count = length(module.vpc.private_subnets)
+
+  file_system_id  = aws_efs_file_system.efs.id
+  subnet_id       = module.vpc.private_subnets[count.index]
+  security_groups = [aws_security_group.efs.id]
+}
+
+resource "aws_security_group" "efs" {
+  name        = "${local.name}-efs"
+  description = "Allow inbound NFS traffic from private subnets of the VPC"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "Allow NFS 2049/tcp"
+    cidr_blocks = module.vpc.private_subnets_cidr_blocks
+    from_port   = 2049
+    to_port     = 2049
+    protocol    = "tcp"
+  }
+
+  tags = local.tags
+}
+
+resource "kubernetes_storage_class" "storage_class" {
+  metadata {
+    name = "gp3"
+  }
+
+  storage_provisioner    = "ebs.csi.aws.com"
+  allow_volume_expansion = true
+  reclaim_policy         = "Delete"
+  volume_binding_mode    = "WaitForFirstConsumer"
+  parameters = {
+    encrypted = true
+    fsType    = "ext4"
+    type      = "gp3"
+  }
 }
