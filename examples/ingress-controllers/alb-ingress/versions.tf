@@ -1,4 +1,12 @@
   terraform {
+  backend "remote" {
+    organization = "RVStandard"
+
+    workspaces {
+      name = "lonelyplanet-digital-sandbox"
+    }
+  }
+
     required_providers {
     aws = {
       source  = "hashicorp/aws"
