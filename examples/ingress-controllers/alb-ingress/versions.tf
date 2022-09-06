@@ -1,4 +1,5 @@
-  terraform {
+terraform {
+
   backend "remote" {
     organization = "RVStandard"
 
@@ -21,6 +22,5 @@
       version = "= 2.5.1"
     }
   }
-    
-  }
+}
   
